@@ -100,8 +100,15 @@ static char val[NCHANNELS_MAX][NCARMAX];
 static char server_name[NCARMAX];
 static int nb_channels = 0;
 
+/*********** for test free(read_buffer) ****/
+char *read_buffer2[NCHANNELS_MAX];
+/*********** for test free(read_buffer) ****/
+
 extern void c_ccard(char **argv, int argc, char **cle, char val[][NCARMAX],
 		    char **def, int n, int *npos);
+
+
+extern long long time_base();
 
 
 int write_record(int fclient, void *record, int size, int tokensize);
@@ -128,9 +135,8 @@ int get_active_write_channels();
 void cancel_read( char *channel );
 char *get_channel_name( char *name );
 
-
 char *get_last_channel();
-/* char *readlink_malloc (const char *filename); */
+
 
 static int MAX_BUFFER = 200000000;
 int TOTAL_SIZE;
@@ -164,6 +170,9 @@ char * read_from_node( int cch, int length );
 void freenodes( struct node *headptr, int cch );
 void write_data( int cch );
 void list_nodes( int cch );
+
+
+extern void check_data(char *record, int size);
 
 
 /* main gossip Server function */
@@ -314,6 +323,17 @@ int allocate_buffers( int cch )
   writeptr[cch]->wr = headptr[cch]->data;
   readptr[cch]->wr = headptr[cch]->data;
 
+  /********* for test free(read_buffer) ****/
+  read_buffer2[cch] = (char *)malloc(24000000);
+
+  if( !read_buffer2[cch] )
+    {
+      fprintf(stderr, "Problem, cannot allocate read_buffer2[%d]\n", cch);
+      exit(FAILURE);
+    }
+
+
+  /********* for test free(read_buffer) ****/
   return (0);
 }
 
@@ -553,8 +573,7 @@ char *get_channel_name(char *name)
 
   strncpy(name, nbuf, strlen(nbuf));
   return name;
-  /* return nbuf; */
-
+  
 }
 
 /* get last active channel name */
@@ -612,7 +631,6 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
   cch = -1;
 
-  /* fprintf(stderr, "Number of Active Channels = %d\n", get_active_channels()); */
   fprintf(stderr, "Number of Active Channels = %d\n", nbActiveChannels);
 
   for (i = 0; i < nbActiveChannels; i++)
@@ -650,9 +668,9 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	    }
 
 	}
-      else
+      else /* if (get_client_count() > 0) */
 	{
-	  fprintf(stderr, "Max Clients Number Reached, cannot go further, \nNumber of Active Channels = \"%d\" !\n", nbActiveChannels); 
+	  fprintf(stderr, "Max Clients Number Reached, cannot go further, \nNumber of Active Channels = \"%d\" !, get_client_count = <%d>\n", nbActiveChannels, get_client_count()); 
 	  close(fclient);
 	  return;
 	}
@@ -688,25 +706,28 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	}
     }
 
-  /* allocate channel buffers */
+  /* allocate channel's buffers */
   if( !headptr[cch] )
     {
       allocate_buffers( cch );
-      
-      fprintf( stderr, "event_loop(), allocating buffers for channel: \"%s\",  headptr[%d] = %d\n", chan[cch].subchannel_name, cch, headptr[cch] );
+
+#ifdef DEBUG      
+      fprintf( stderr, "event_loop(), allocating buffers for channel: \"%s\",  headptr[%d]->data = %d\n", chan[cch].subchannel_name, cch, headptr[cch]->data );
+#endif
     }
   else if( headptr[cch] )
     {
-      fprintf(stderr, "event_loop(), buffers already allocated!, headptr[%d]--->\"%d\"\n", cch, headptr[cch] );
+#ifdef DEBUG
+      fprintf(stderr, "event_loop(), buffers already allocated!, headptr[%d] = \"%d\"\n", cch, headptr[cch] );
       
+#endif
     }
   
   pthread_mutex_unlock(&mutex);
   /* end critical section */
   
-
   fprintf(stderr, "channel no = %d\n", cch);
-  fprintf(stderr, "channel: %s\n", chan[cch].subchannel_name);
+  fprintf(stderr, "channel[%d]: %s, mode = %s\n", cch, chan[cch].subchannel_name, mode);
   fprintf(stderr, "mode: %s\n", mode);
   fprintf(stderr, "chan[%d].fs_read:  %d\n", cch, chan[cch].fs_read);
   fprintf(stderr, "chan[%d].fs_write: %d\n", cch, chan[cch].fs_write);
@@ -725,7 +746,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
     {
       if( !read_buffer )
 	{
-	  /* read_buffer = ( char * )malloc( 1024000 * sizeof( char ) ) */;
+	  /* read_buffer = ( char * )malloc( 8000000 * sizeof( char ) ); */
 	}
     }
 
@@ -772,15 +793,19 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	    }
 	  else if(strncmp(buf, "READ", 4) == 0 && get_client_count() >= 0) 
 	    {
-	      int nbytes = 0, tag;
+	      int nbytes = 0, tag, nbytes2;
 	      char *write_buffer;
+
 	      readers_counter[cch]++;
 	      send_ack_nack(fclient, IS_OK);
-
+	      
 	      strcpy(last_channel, chan[cch].subchannel_name);
 	      strncpy (last_channel + strlen(last_channel), ", command: READ", strlen(", command: READ") - 1);
+
+#ifdef DEBUG
 	      fprintf(stderr, "Begin READ Command using channel: \"%s\"\n", chan[cch].subchannel_name);
-	       
+#endif
+   
 	      if( chan[cch].fs_read == LOAD ) /* case load data from file */
 		{
 		  memcpy( &nbytes, readptr[cch]->rd, sizeof( int ) );  /* get first length tag */
@@ -790,14 +815,16 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 		  fprintf(stderr, "gossip_server::event_loop(): READ: %d bytes have been loaded \n", nbytes);
 #endif
 		  write_buffer = read_from_node( cch, nbytes );
-		
+		  
 		  write_buffer += nbytes + sizeof(int);
 
 		  memcpy( &tag, write_buffer, sizeof( int ) );  /* get second length tag */
 
 		  if (tag != nbytes )
 		    {
+#ifdef DEBUG
 		      fprintf(stderr, "READ Command, Error reading data from file, length problem, tag1 = \"%d\", tag2 = \"%d\"\n", nbytes, tag);
+#endif
 		      send_ack_nack(fclient, NOT_OK);
 		      continue;
 		    }
@@ -814,30 +841,37 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
 		  continue;
 		} /* end case load data from file */
-	      
+
+	      	      
 #ifdef DEBUG
 	      fprintf(stderr, "gossip_server::event_loop(): READ: No data file loaded \n");
 #endif
+
+#ifdef DEBUG	     
+#endif
 	      
 	      if(occupied_counter[cch] <= 0)  /*  Block until data becomes available */
-		
 		{
+		 
 		  blocked_readers[cch]++;
-		  
+
+		  		  
 		  /*** begin READER critical section, wait for data to be written  ***/
 		  pthread_mutex_lock(&mutr);
+		  
 		  while(occupied_counter[cch] <= 0)
 		    {
+#ifdef DEBUG
 		      fprintf(stderr, "READ Command, no data available, \nshould wait for data to be written to channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name);
-		     
+#endif		     
 		      pthread_cond_wait(&condr, &mutr);
+
 		    }
 		  pthread_mutex_unlock(&mutr);
 		  /***************** end READER critical section *********************/
 		  blocked_readers[cch]--;  /* At wakeup */
 		  
 		}
-	      
 	      
 	      if( occupied_counter[cch] == 1500 )
 		{
@@ -848,30 +882,31 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 					  for reading or we were waiting */
 
 
-	      if ( ! readptr[cch]->rd )
+	      if ( !readptr[cch]->rd )
 		fprintf( stderr, "READ Command using channel \"%s\" <readptr[%d]->rd is NULL>\n", chan[cch].subchannel_name, cch);
-	      	      
+	      
 	      /* read data length */
-	      pthread_mutex_unlock( &mutex );
 	      if ( readptr[cch]->rd >= readptr[cch]->data && readptr[cch]->rd != readptr[cch]->data + NODE_SIZE)
 		{
 		  /* extract first length tag */
 		  memcpy( &nbytes, readptr[cch]->rd, sizeof( int ) );  
-		  
-		  fprintf( stderr, " channel[%d]: \"%s\", data length = \"%d\" \n", cch, chan[cch].subchannel_name, nbytes );
-
+#ifdef DEBUG		  
+		  fprintf( stderr, "READ Command using channel[%d]: \"%s\", data length = \"%d\"\n", cch, chan[cch].subchannel_name, nbytes );
+#endif
 		}
-	      pthread_mutex_unlock( &mutex );	      
-	      fprintf( stderr, "READ Command using channel \"%s\"\n", chan[cch].subchannel_name);
 	      
-
 	      if( nbytes <= 0 )
 		{
 		  fprintf( stderr, "READ Command using channel \"%s\", Error reading data length: %d (wrong value)\n", chan[cch].subchannel_name, nbytes );
 		  send_ack_nack( fclient, NOT_OK );
 		  exit( FAILURE );
 		}
+
+
+	      pthread_mutex_lock( &mutex ); /* lock read mutex */
+
 	      /* read data from node(s) */
+      
 	      write_buffer = read_from_node( cch, nbytes );
 	      
 	      if( !write_buffer )
@@ -881,48 +916,68 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 		  exit( FAILURE );
 		}
 
-	      write_buffer += sizeof( int );
+	      write_buffer += nbytes + sizeof( int );
+	      
+	      memcpy( &nbytes2, write_buffer, sizeof( int ) ); 
 	      
 
-	      if(nbytes >= 30000000)
-		fprintf( stderr, "READ Command using channel \"%s\", PROBLEMMMMMMMMMMMMMMM with data length\n", chan[cch].subchannel_name, nbytes);
+	      if( nbytes != nbytes2)
+		{
+		  fprintf( stderr, "READ Command using channel \"%s\", Error reading data length:  tag1 = %d != tag2 = %d \n", chan[cch].subchannel_name, nbytes, nbytes2 );
+		  send_ack_nack( fclient, NOT_OK );
+		  exit( FAILURE );
+		}
 
+#ifdef DEBUG
+	      fprintf( stderr, "READ Command using channel \"%s\", tag1 = %d == tag2 = %d \n", chan[cch].subchannel_name, nbytes, nbytes2 );
+#endif
 
+	      write_buffer -= nbytes;
+	      
 	      /* send data with length nbytes to client.       */
 	      /* data length will be verified in read_record() */
-	      write_record( fclient, ( unsigned char * )write_buffer, nbytes, 1 );
+	      nbytes2 = write_record( fclient, ( unsigned char * )write_buffer, nbytes, 1 );
 	      
-#ifdef DEBUG
-	      fprintf(stderr, "event_loop(): READ: end[%d] - out[%d] = %d\n", cch, cch, end[cch] - out[cch] );
-#endif	  
-	      
+	      write_buffer -= sizeof( int );
+	      pthread_mutex_unlock( &mutex ); /* unlock mutex */
+
+
 	      
 	      /* data has been read, write thread needs to be waken up */
-	      pthread_mutex_lock(&mutw);
+
+	      pthread_mutex_lock(&mutr);
 	      if( blocked_writers[cch] > 0 )
 		{
 		  fprintf( stderr, "READ Command, data has been read, \nwrite thread needs to be waken up!\n" );
 		  readptr[cch]->fs_read = 0; /* read has been done, write thread can proceed */
 
-		  pthread_cond_broadcast( &condw );
+		  pthread_cond_broadcast( &condr );
 		}
-	      pthread_mutex_unlock(&mutw);
+	      pthread_mutex_unlock(&mutr);
 
 	      /* data has been read, write thread needs to be waken up */
 	      readers_counter[cch]--;
-	      send_ack_nack( fclient, IS_OK ); /* send ACK to indicate that read */
-	                                       /* command has been completed     */
-	      reset_timeout_counter();
-	      fprintf( stderr, "End READ Command for data length = \"%d\", using channel[%d]: \"%s\"\n", nbytes, cch, chan[cch].subchannel_name );
 
+	      send_ack_nack( fclient, IS_OK ); /* send ACK to indicate that read */
+
+                               
+	      /* command has been completed     */
+	      reset_timeout_counter();
+	      
 	    }
 
 	  else if( strncmp(buf, "WRITE", 5 ) == 0 && get_client_count() >= 0 ) 
 	    {
 	      int nbytes;
-	      
+
+	      /* fflush(stderr); */
+
+
 	      writers_counter[cch]++;
+#ifdef DEBUG
+
 	      fprintf(stderr, "Begin WRITE using channel: \"%s\"\n", chan[cch].subchannel_name);
+#endif
 	      send_ack_nack(fclient, IS_OK);
 	      
 	      strcpy( last_channel, chan[cch].subchannel_name );
@@ -931,66 +986,58 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	      nbytes = 0;
 
 	      /* read data from socket */
-	      /* read_buffer = ( char * )read_record( fclient, read_buffer, &nbytes, maxlength, 1 ); */
-	      read_buffer = ( char * )read_record( fclient, NULL, &nbytes, maxlength, 1 );
 
+	      /* memset(read_buffer2[cch], '\0', 8000000); */
 
-	      if(nbytes >= 1000000000)
-		fprintf( stderr, "WRITE PROBLEMMMMMMMMMMMMMMMMM wrong data length = \"%d bytes\"\n", nbytes );
+	      ( char * )read_record( fclient, read_buffer2[cch], &nbytes, maxlength, 1 );
 
-	      if( !read_buffer)
+	      if( !read_buffer2[cch] )
 		{
 		  fprintf(stderr, "WRITE command, read_buffer is NULLL\n");
 		  exit(FAILURE);
 		}
 
-	      fprintf( stderr, "WRITE Command received, data length = \"%d bytes\" \n", nbytes );
 	      /***************** read records ***********************/
 #ifdef DEBUG
 	      fprintf( stderr, "WRITE command received \"%d bytes\"\n", nbytes );
 #endif	  
 	      
-	      if( !read_buffer )
-		{
-#ifdef DEBUG
-		  fprintf(stderr, "WRITE command, read_buffer is NULL\n");
-#endif
-		  send_ack_nack( fclient, NOT_OK );
-		  continue;
-		}
-	      
 	      /* copy data form linear to circular buffer */
-	      /* lock/unlock write buffer access	  */    
+	      /* lock/unlock write buffer access	  */
+ 
 	      pthread_mutex_lock(&mutex);
-	      write_to_node( read_buffer, cch, nbytes );
+	      write_to_node( read_buffer2[cch], cch, nbytes );
 	      pthread_mutex_unlock(&mutex);
-	      
+
 
 	      /* Either there is space, or we were waiting */
 	      /* and then waken up when space becomes available after read data */
 	      occupied_counter[cch]++ ;
 
 	      /* reader thread needs to be waken up */
-	      pthread_mutex_lock(&mutr);
+
+	      fprintf(stderr, "WRITE, blocked_readers[%d] = %d, occupied_counter[%d] = %d\n", cch, blocked_readers[cch], cch, occupied_counter[cch]);
+
+
+	      pthread_mutex_lock(&mutw);
 	      if(blocked_readers[cch] > 0)
 		{
-		  fprintf(stderr, "WRITE, reader thread needs to be waken up !!\n");
 		  pthread_cond_broadcast(&condr);
+		  fprintf(stderr, "WRITE, reader thread needs to be waken up 2!!\n");
 		}
-	      pthread_mutex_unlock(&mutr);
+      
+	      pthread_mutex_unlock(&mutw);
 	      /* reader thread needs to be waken up */
-	  
+
 	      writers_counter[cch]--;
+
 	      send_ack_nack(fclient, IS_OK); /* send ACK to indicate that write */
-	                                     /* command has been completed */
+	      
+	      /* command has been completed */
 	      reset_timeout_counter();
 	      
-	  
 	      readptr[cch]->fs_write = fclient;
-	      fprintf(stderr, "End WRITE command using channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name );
 
-	      if( read_buffer )
-		free( read_buffer );
 	    }
 
 	  else
@@ -1005,7 +1052,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 		  free(buf);
 		}
 
-	      continue;                        /* connection terminated, process next client */
+	      continue;   /* connection terminated, process next client */
 	    }
 
 
@@ -1020,14 +1067,15 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
   pthread_mutex_lock(&mutex);
   chan[cch].status += 1;
 
+#ifdef DEBUG
   fprintf(stderr, "Server: freeing channel[%d], status = %d\n", cch, chan[cch].status);
+#endif
 
   if( !headptr[cch] )
     {
       fprintf(stderr, "Thread exiting, headptr[%d] is NULL\n", cch);
     }
   
-  /* else if( headptr[cch] && chan[cch].status > 0 /\* && cch != 0 && cch != 1 *\/ ) */
   else if( headptr[cch] && chan[cch].status >= 2 )
     {
       /* free channel list nodes and buffers */
@@ -1036,36 +1084,55 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
       chan[cch].fs_read = -1;
       chan[cch].fs_write = -1;
 
-      /* if ( cch == 0 || cch == 1) */
       if( headptr[cch] )
 	{
+#ifdef DEBUG
 	  fprintf(stderr, "Thread exiting, headptr[%d] NOT NULL\n", cch);
+#endif
 	  headptr[cch] = NULL;
 
+#ifdef DEBUG
 	  if( !headptr[cch] )
 	    fprintf(stderr, "Thread exiting, headptr[%d] NULL\n", cch);
+#endif
 	}
 
+#ifdef DEBUG
       fprintf(stderr, "Server: freeing channel[%d]\n", cch);
+#endif
     } 
 
   /* else if( chan[cch].status < 0 ) */
   else if( chan[cch].status >= 2 )
     {
       headptr[cch] = NULL;
+#ifdef DEBUG
       fprintf(stderr, "Server: freeing channel[%d], status = %d\n", cch, chan[cch].status);
+#endif
     }
 
   /* pthread_mutex_unlock(&mutex); */
 
   if( headptr[cch] )
     {
+#ifdef DEBUG
       fprintf(stderr, "Thread exiting, headptr[%d] NOT NULL, status = %d\n", cch, chan[cch].status);
+#endif
     }
+#ifdef DEBUG
+  fprintf(stderr, "--before decrement--client_count = %d\n", get_client_count());
+#endif
+
   decrement_client_count();
 
-  fprintf(stderr, "Server thread exiting from active channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name);
+#ifdef DEBUG
+  fprintf(stderr, "--after decrement--client_count = %d\n", get_client_count());
+#endif
+
+  fprintf(stderr, "Server thread exiting from active channel[%d]: \"%s\", using mode: %s\n", cch, chan[cch].subchannel_name, mode);
   pthread_mutex_unlock(&mutex);
+
+  fflush(stderr);
 
 }
 
@@ -1078,44 +1145,6 @@ void freenodes( struct node *head_node, int cch )
 #ifdef DEBUG
     fprintf( stderr, "freenodes( ), Satrt ..., channel[%d]\n", cch);
 #endif
-
-    while( head_node ) 
-      {
-	if( head_node->next )
-	  {
-	    temp = head_node->next;
-
-	    if( head_node->data )
-	      {
-		free( ( char * )head_node->data);
-		head_node->data = NULL;
-			      }
-
-	    free( ( struct node * )head_node );
-	    head_node = NULL;
-	    head_node = temp;
-	    counter++;
-	  }
-	else
-	  {
-	    if( head_node )
-	      {
-
-		if( head_node->data )
-		  {
-		    free( ( char * )head_node->data);
-		    head_node->data = NULL;
-		  }
-
-		free( ( struct node * )head_node );
-		head_node = NULL;
-
-		counter++;
-	      }
-	    break;
-	  }
-	
-      }
 
     /* chan[cch].status += 1; */
     nbActiveChannels--;
@@ -1349,54 +1378,65 @@ void write_to_node(char *buffer, int cch, int size )
 #endif
 
   lspace = writeptr[cch]->data + NODE_SIZE - writeptr[cch]->wr;
-
+  
   if( lspace <= 0)
     {
       find_write_node( cch );
 
     }
 
-  if (lspace >= size + 2 * sizeof( int ))
+  if (lspace >= size + 2 * sizeof( int )) /* enough space in one node */
     {
-      memcpy(writeptr[cch]->wr, (char *)&size, sizeof( int ));
 
+#ifdef DEBUG
+      fprintf(stderr, "write_to_node(), enough space in one node for size = %d, channel[%d]: \"%s\"\n", size, cch, chan[cch].subchannel_name);
+#endif
+
+      
+#ifdef DEBUG
+      fprintf( stderr, "write_to_node(), <1111> length = %d will be written to writeptr[%d]->wr at address: %d, for channel: \"%s\"\n", size, cch, writeptr[cch]->wr, chan[cch].subchannel_name );
+#endif
+
+      memcpy(writeptr[cch]->wr, (char *)&size, sizeof( int ));
       writeptr[cch]->wr += sizeof( int );
       
       memcpy(writeptr[cch]->wr, buffer, size);
-   
       writeptr[cch]->wr += size;
 
-      memcpy(writeptr[cch]->wr, (char *)&size, sizeof( int ));
 
+      memcpy(writeptr[cch]->wr, (char *)&size, sizeof( int ));
       writeptr[cch]->wr += sizeof( int );
+
     }
 
-  else
+  else /* it takes more than one node */
     {
+#ifdef DEBUG
+      fprintf(stderr, "write_to_node(), it takes more than one node for size = %d, channel[%d]: \"%s\"\n", size, cch, chan[cch].subchannel_name);
+#endif
+
+       
       memcpy(writeptr[cch]->wr, (char *)&size, sizeof( int ) );
 
-      writeptr[cch]->wr += sizeof( int );
+#ifdef DEBUG
+      int toto;
+      memcpy(&toto, writeptr[cch]->wr, sizeof( int ) );
+      fprintf(stderr, "write_to_node(), it takes more than one node for size toto = %d, channel[%d]: \"%s\"\n", toto, cch, chan[cch].subchannel_name);
+#endif
 
+      writeptr[cch]->wr += sizeof( int );
+      
       memcpy(writeptr[cch]->wr, buffer, (lspace - sizeof( int )) );
 
       writeptr[cch]->wr += (lspace - sizeof( int ));
 
-      if( lspace == NODE_SIZE )
-	{
-	  headptr[cch]->rd = headptr[cch]->data;
-	}
-
       buffer += (lspace - sizeof( int ));
-
-
-      if( !buffer )
-	fprintf(stderr, "write_to_node(), channel: \"%s\", data buffer NULL, exiting\n", chan[cch].subchannel_name);
 
       check_next_node( cch );
       
       lspace = size + 2 * sizeof(int) - lspace;
 
-      if ( NODE_SIZE > lspace )
+      if ( NODE_SIZE > lspace ) /* it takes juste another node */
 	{
 	  memcpy(writeptr[cch]->wr, buffer, lspace - sizeof(int));
 
@@ -1411,12 +1451,13 @@ void write_to_node(char *buffer, int cch, int size )
 	}
 
       else
-	{
+	{/* it takes more than one node */
+
 	  memcpy(writeptr[cch]->wr, buffer, NODE_SIZE);
 
 	  writeptr[cch]->wr += NODE_SIZE;
 	  buffer += NODE_SIZE;
-	  
+
 	  lspace  -= NODE_SIZE;
 
 	  while( lspace > NODE_SIZE)
@@ -1425,28 +1466,34 @@ void write_to_node(char *buffer, int cch, int size )
 
 	      memcpy(writeptr[cch]->wr, buffer, NODE_SIZE);
 	      writeptr[cch]->wr += NODE_SIZE;
-
+	      
 	      buffer += NODE_SIZE;
 
-	      lspace  -= NODE_SIZE;
+	      lspace -= NODE_SIZE;
 
 	    }
 
 	  if ( writeptr[cch]->wr - writeptr[cch]->data ==  NODE_SIZE )
-	    {
+	    { /* currend node is full */ 
 	      if(lspace > 0 )
-		check_next_node( cch );
-
+		{
+		  check_next_node( cch );
+		}
 	    }
-	  if(lspace > 0 )
+	  if( lspace >=  sizeof( int ))
 	    {
 	      memcpy(writeptr[cch]->wr, buffer, lspace - sizeof( int ));
-	      writeptr[cch]->wr += lspace - sizeof( int );	   
+	      writeptr[cch]->wr += lspace - sizeof( int );
 	      memcpy(writeptr[cch]->wr, (char *)&size, sizeof( int ) );
-	      writeptr[cch]->wr += sizeof( int );	
 
+#ifdef DEBUG
+	      fprintf( stderr, "write_to_node(), <3333> length = %d has been written to writeptr[%d]->wr at address: %d, for channel: \"%s\"\n", size, cch, writeptr[cch]->wr, chan[cch].subchannel_name );
+#endif
+
+	      writeptr[cch]->wr += sizeof( int );
+	
 	    }
-
+	  
 	}
 
     }
@@ -1462,48 +1509,62 @@ void write_to_node(char *buffer, int cch, int size )
 void check_next_node( int cch )
 {
   struct node *new_node;
-
+  
 #ifdef DEBUG   
   fprintf(stderr, "check_next_node(), start, ..., channel: \"%s\"\n", chan[cch].subchannel_name);
 #endif
 
   if ( writeptr[cch]->next )
     {
-     
       new_node = writeptr[cch]->next;
-
-      if( new_node->wr == new_node->rd )	     
-	/* node start, no data */
-	{
-	  writeptr[cch] = new_node;
-	  writeptr[cch]->wr = new_node->data;
-	  writeptr[cch]->rd = new_node->data;
-	}
 
       if( new_node->wr == new_node->rd && new_node->wr == new_node->data )	     
 	/* node start, no data */
 	{
 	  writeptr[cch] = new_node;
+	  writeptr[cch]->data = new_node->data;
 	  writeptr[cch]->wr = new_node->data;
 	  writeptr[cch]->rd = new_node->data;
 	}
 
       else if( new_node->wr == new_node->rd && new_node->wr == new_node->data + NODE_SIZE )	     
-	/* data read */
+	/* data read, node empty */
 	{
 	  writeptr[cch] = new_node;
-	  writeptr[cch]->wr -= NODE_SIZE;
-	  writeptr[cch]->rd -= NODE_SIZE;	
+	  writeptr[cch]->data = new_node->data;
+	  writeptr[cch]->wr = new_node->data;
+	  writeptr[cch]->rd = new_node->data;
+	}
+
+
+
+      else if( new_node != readptr[cch] )	     
+	/* not read node */
+	{
+	  writeptr[cch] = new_node;
+	  writeptr[cch]->wr = writeptr[cch]->wr - (writeptr[cch]->wr - writeptr[cch]->data);
+
+	}
+
+      else if(new_node != readptr[cch] && new_node->rd != readptr[cch]->rd)
+	{
+	  /* node start, no data */
+
+	  writeptr[cch] = new_node;
+	  writeptr[cch]->data = new_node->data;
+	  writeptr[cch]->wr = new_node->data;
+	  writeptr[cch]->rd = new_node->data;
 	}
 
       else
 	{
+	  
 	  /* All nodes occupied, insert a new one */
 	  if ( check_left_space( ) )
 	    { 
 	      if( !insert_node(cch) )
 		{
-		  fprintf(stderr, "check_next_node(), cch[%d], cannot insert a new node, exiting !!!!\n", cch);
+	
 		  exit(FAILURE);
 		}
 
@@ -1514,24 +1575,11 @@ void check_next_node( int cch )
 	      fprintf(stderr, "Cannot add more nodes, no more space can be allocated, exiting!!!\n");
 	      exit(FAILURE);
 	    }
+	
 	}
     }
 
-  else if(headptr[cch]->wr == headptr[cch]->rd && headptr[cch]->wr == headptr[cch]->data )
-    { /* node list start */
 
-      writeptr[cch] = headptr[cch];
-      writeptr[cch]->wr = headptr[cch]->data;
-      writeptr[cch]->rd = headptr[cch]->data;
-    }
-
-  else if(headptr[cch]->wr == headptr[cch]->rd && headptr[cch]->wr == headptr[cch]->data + NODE_SIZE )
-    { /* data read from first node */
-
-      writeptr[cch] = headptr[cch];
-      writeptr[cch]->wr = headptr[cch]->data;
-      writeptr[cch]->rd = headptr[cch]->data;
-    }
 
   else if(headptr[cch]->wr == headptr[cch]->data && headptr[cch]->rd == headptr[cch]->data + NODE_SIZE )
     { /* data read from first node */
@@ -1539,7 +1587,24 @@ void check_next_node( int cch )
       writeptr[cch] = headptr[cch];
       writeptr[cch]->wr = headptr[cch]->data;
       writeptr[cch]->rd = headptr[cch]->data;
+     
     }
+
+  /*************** if tail node ******************/
+  else if ( writeptr[cch] == nodeptr[cch] && readptr[cch] != headptr[cch]) 
+    {
+      /* current write node is the tail */
+      /* restart from head              */
+      writeptr[cch] = headptr[cch];
+      writeptr[cch]->data = headptr[cch]->data;
+      writeptr[cch]->wr = headptr[cch]->data;
+      writeptr[cch]->rd = headptr[cch]->data;
+
+    }
+
+  /*************** end if tail node **************/
+
+
   else
     {
       find_write_node( cch );
@@ -1621,7 +1686,7 @@ void find_write_node( int cch )
 {
   int lspace, found, counter;
   struct node *new_node;
-
+  
 #ifdef DEBUG 
   fprintf(stderr, "find_write_node(), Start, ..., channel: \"%s\"\n", chan[cch].subchannel_name);
 #endif
@@ -1747,7 +1812,7 @@ void find_write_node( int cch )
 /* is reached                            */
 int check_left_space( )
 {
-  fprintf( stderr, "check_left_space(), TOTAL_SIZE ============= %d\n", TOTAL_SIZE);
+  fprintf( stderr, "check_left_space(), TOTAL_SIZE = %d\n", TOTAL_SIZE);
   
   return TOTAL_SIZE <= MAX_BUFFER ? 1 : 0;
 }
@@ -1777,19 +1842,19 @@ int insert_node( int cch )
     }
 
   if ( writeptr[cch] == nodeptr[cch] ) /* current write node is the tail */
-    {				      /* new node becomes tail */
+    {				       /* new node becomes tail */
                                          
       new_node->next = nodeptr[cch]->next;
       nodeptr[cch]->next = new_node;
       nodeptr[cch] = new_node;
-      writeptr[cch] = new_node;
-      
+      writeptr[cch] = new_node;      
     }
   else /* write node is an intermediate one */
     {
       new_node->next = writeptr[cch]->next;
       writeptr[cch]->next = new_node;
       writeptr[cch] = new_node;
+
     }
 
   writeptr[cch]->data = new_node->data;
@@ -1798,7 +1863,8 @@ int insert_node( int cch )
   writeptr[cch]->fs_read  = 0;
   writeptr[cch]->fs_write = 0;
   node_counter[cch] += 1;
-  
+
+ 
 #ifdef DEBUG 
   fprintf(stderr, "insert_node(), channel: \"%s\", nodes number = %d\n", chan[cch].subchannel_name, node_counter[cch] );
 #endif
@@ -1860,17 +1926,17 @@ int get_write_node_number( int cch )
 char * read_from_node( int cch, int length )
 {
   int size_back = 0;
-  int space, counter, restant;
+  int space, counter, restant, i;
+
+  struct node *new_node;
 
 #ifdef DEBUG 
   fprintf( stderr, "read_from_node(),  Start, ..., channel: \"%s\"\n", chan[cch].subchannel_name );
 #endif
 
-  if( !node_buffer || length > maxsize)
+   if( !node_buffer || length > maxsize)
     {
       maxsize = length;
-      fprintf( stderr, "gossip_server::read_from_node() maxsize ================== %d\n", maxsize );
-      /* node_buffer = NULL; */
       node_buffer = (char *)malloc( maxsize + 2 * sizeof(int) );
     }
 
@@ -1879,7 +1945,7 @@ char * read_from_node( int cch, int length )
       fprintf( stderr, "Unable to allocate memory for read buffer with size = %d\n", length );
       return NULL;
     }
-   
+  
   if( !readptr[cch] )
     {
       fprintf( stderr, "read_from_node(),  readptr[cch] NULL, for channel: \"%s\"\n", chan[cch].subchannel_name );
@@ -1888,15 +1954,21 @@ char * read_from_node( int cch, int length )
   
   if( readptr[cch]->rd == readptr[cch]->data && length + 2 * sizeof(int) <= NODE_SIZE) 
     {/* read from begining of node */
+
       memcpy( node_buffer, readptr[cch]->rd, length + 2 * sizeof(int) );
       readptr[cch]->rd += length + 2 * sizeof(int);
       
       if( readptr[cch]->rd == writeptr[cch]->wr )
 	{
-	  readptr[cch]->rd = readptr[cch]->data;
-	  writeptr[cch]->wr = writeptr[cch]->data;
+	  readptr[cch] = headptr[cch];
+	  writeptr[cch] = headptr[cch];
+	  readptr[cch]->data = headptr[cch]->data;
+	  writeptr[cch]->data = headptr[cch]->data;
+	  readptr[cch]->rd = headptr[cch]->data;
+	  writeptr[cch]->wr = headptr[cch]->data;
+
 	} 
-      
+      size_back = 0;
     } 
   
   else if ( NODE_SIZE + readptr[cch]->data - readptr[cch]->rd >= ( length + 2 * sizeof(int) ) )
@@ -1908,67 +1980,110 @@ char * read_from_node( int cch, int length )
       
       if( readptr[cch]->rd == writeptr[cch]->wr )
 	{
-	  readptr[cch]->rd = readptr[cch]->data;
-	  writeptr[cch]->wr = writeptr[cch]->data;
+	  readptr[cch] = headptr[cch];
+	  writeptr[cch] = headptr[cch];
+	  readptr[cch]->data = headptr[cch]->data;
+	  writeptr[cch]->data = headptr[cch]->data;
+	  readptr[cch]->rd = headptr[cch]->data;
+	  writeptr[cch]->wr = headptr[cch]->data;
+
 	} 
+      size_back = 0;
     }	
   else /* read from several nodes */
     {
-      /* read first part of data from the cureent read node */
+      /* read first part of data from the current read node */
       int rspace = NODE_SIZE + readptr[cch]->data - readptr[cch]->rd;
 
       memcpy( node_buffer, readptr[cch]->rd, rspace );
 
       node_buffer += rspace;
       size_back += rspace;
-      readptr[cch]->rd = readptr[cch]->data;
-      
-      readptr[cch]->fs_write = 0;
-      readptr[cch]->fs_read = 0;
-      
+
+      readptr[cch]->rd += rspace;
+
+      if(readptr[cch]->rd == readptr[cch]->data + NODE_SIZE)
+	{
+	  readptr[cch]->rd = readptr[cch]->data;
+	  readptr[cch]->fs_write = 0;
+	  readptr[cch]->fs_read = 0;
+	}
+
       /* if end of list nodes restart from the head node */
-      if( readptr[cch] == nodeptr[cch] && nodeptr[cch] != headptr[cch])
+      if( readptr[cch] == nodeptr[cch] && nodeptr[cch] != headptr[cch] && readptr[cch]->rd == readptr[cch]->data + NODE_SIZE )
 	{
 	  readptr[cch] = headptr[cch];
-	  
+	  readptr[cch]->data = headptr[cch]->data;
+	  readptr[cch]->rd = headptr[cch]->data;
 	  if(readptr[cch]->rd == readptr[cch]->data + NODE_SIZE)
 	    {
 	      writeptr[cch] = headptr[cch];
-	      
+	      writeptr[cch]->wr = headptr[cch]->data;
 	    } 
 	  
 	} 
+
+
       else
 	{
+	  restant = (length + 2*sizeof(int) - rspace );
+	  
+	  if( readptr[cch]->next == NULL)
+	    {
 
-	  if( !readptr[cch]->next )
-	    {	
-	      fprintf(stderr, "read_from_node(), channel: \"%s\", readptr[%d]->next NULL, exiting !!!\n", chan[cch].subchannel_name, cch);
+	      readptr[cch] = headptr[cch];
+	      readptr[cch]->rd = headptr[cch]->data;
 
-
-	      exit(FAILURE);
 	    }
 
-	  /* else continue in next node */
-	  readptr[cch] = readptr[cch]->next;
+	  else
+	    { /* else continue with next node */
+
+	      new_node = readptr[cch]->next;
+
+	      readptr[cch] = new_node;
+	      
+	      readptr[cch]->data = new_node->data;
+	      readptr[cch]->rd = new_node->data;
+
+	    }
 
 	}
-      restant = (length + 2*sizeof(int) - rspace ) - NODE_SIZE;
 
-      if (restant <= 0)
+      /* restant = (length + 2*sizeof(int) - rspace ) - NODE_SIZE; */
+      restant = (length + 2*sizeof(int) - rspace );
+
+#ifdef DEBUG
+      fprintf( stderr, "read_from_node(), <1010> length = %d length\n", restant);
+#endif
+
+      if ( restant <= NODE_SIZE )
 	{/* all remaining data is in the current read node */
 	  memcpy( node_buffer, readptr[cch]->rd, (length + 2 * sizeof(int) - rspace) );
 	  readptr[cch]->rd += (length + 2 * sizeof(int) - rspace);
-	 
+	  
 	  /* if end of node list point to the head node */
-	  if( readptr[cch] == nodeptr[cch] && readptr[cch]->rd == readptr[cch]->wr )	
+	  if( readptr[cch] == nodeptr[cch] && readptr[cch]->rd == readptr[cch]->data + NODE_SIZE )	
 	    {
 	      readptr[cch] = headptr[cch];
 	      writeptr[cch] = headptr[cch];
-	      readptr[cch]->wr = headptr[cch]->data;
+	      readptr[cch]->data = headptr[cch]->data;
+	      readptr[cch]->rd = headptr[cch]->data;
 	      writeptr[cch]->wr = headptr[cch]->data;
 	      
 	    }
+	  if( readptr[cch]->rd == writeptr[cch]->wr )
+	    {
+	      readptr[cch] = headptr[cch];
+	      writeptr[cch] = headptr[cch];
+	      readptr[cch]->data = headptr[cch]->data;
+	      readptr[cch]->rd = headptr[cch]->data;
+	      writeptr[cch]->wr = headptr[cch]->data;
+	      
+	    }
+
+	  
+
 	}
       else /* remaining data is in multiple nodes */
 	{
@@ -1976,43 +2091,76 @@ char * read_from_node( int cch, int length )
 	  memcpy( node_buffer, readptr[cch]->rd,  NODE_SIZE);
 	  
 	  node_buffer += NODE_SIZE;
-	  size_back += NODE_SIZE;  
-	  
+	  size_back += NODE_SIZE;
+
+#ifdef DEBUG  
+	  fprintf( stderr, "read_from_node(), <ONZE> length = %d has been read, size_back = %d\n", NODE_SIZE, size_back);
+#endif
+
 	  readptr[cch]->rd += NODE_SIZE;
+
 	  if( readptr[cch]->rd == readptr[cch]->wr )
 	    {
 	      readptr[cch]->rd = readptr[cch]->data;
 	      readptr[cch]->wr = readptr[cch]->data;
+
+#ifdef DEBUG  
+	      fprintf( stderr, "read_from_node(), <DOUZE> readptr[%d]->rd: %d\n", cch, readptr[cch]->rd);
+#endif
 	    }
 
 	  /* recompute remaining data length */
 	  space = (length + 2 * sizeof(int) - rspace ) - NODE_SIZE;
+
+	  if( space <= 0)
+	    {
+	      readptr[cch]->rd = readptr[cch]->data;
+	      readptr[cch]->wr = readptr[cch]->data;
+
+	      return node_buffer;
+	    }
+
+
 	  counter = 1;
 
 	  if( readptr[cch]->next )
 	    {
 	      readptr[cch] = readptr[cch]->next;
+	      readptr[cch]->rd = readptr[cch]->data;
+
+#ifdef DEBUG 
+	      fprintf( stderr, "read_from_node(), <TREIZE> readptr[%d]->rd: %d\n", cch, readptr[cch]->rd);
+#endif
 	    } 
 	  else
 	    {
 	      readptr[cch] = headptr[cch];
+	      readptr[cch]->data = headptr[cch]->data;
+	      readptr[cch]->rd = headptr[cch]->data;
 	    }
 	  /* if remaining data is in more than one node */
 	  while(space >= NODE_SIZE)
 	    {
-	      memcpy( node_buffer, readptr[cch]->rd, NODE_SIZE );
+
+	      if( !memcpy( node_buffer, readptr[cch]->rd, NODE_SIZE ) )
+		fprintf(stderr, "node_buffer NULL\n");
+
 	      space -=  NODE_SIZE;
+
 	      /* reset read node offset to the begining of node */
 	      readptr[cch]->rd = readptr[cch]->data;
 	      readptr[cch]->wr = readptr[cch]->data;
 
-	      if( readptr[cch]->next )
+	      if( readptr[cch]->next && readptr[cch] != nodeptr[cch] )
 		{
 		  readptr[cch] = readptr[cch]->next;
+		  readptr[cch]->rd = readptr[cch]->data;
+		  
 		}
 	      else
 		{
 		  readptr[cch] = headptr[cch];
+		  
 		}
 	      
 	      node_buffer += NODE_SIZE;
@@ -2021,14 +2169,17 @@ char * read_from_node( int cch, int length )
 	    } /* end while loop */
 	  
 
-	  if( space > 0)
+	  if( space > 0 )
 	    { /* read remaing data less than node length */
-	      
-	      memcpy( node_buffer, readptr[cch]->rd, space );
+
+	      memcpy( node_buffer, readptr[cch]->rd, space);
 	      readptr[cch]->rd += space;
-	      
+
+
 	      if( readptr[cch]->rd == writeptr[cch]->wr )
 		{
+		  readptr[cch] = headptr[cch];
+		  writeptr[cch] = headptr[cch]; 
 		  readptr[cch]->rd = readptr[cch]->data;
 		  writeptr[cch]->wr = writeptr[cch]->data;
 		 		  
@@ -2039,16 +2190,26 @@ char * read_from_node( int cch, int length )
 		      writeptr[cch] = headptr[cch]; 
 		      writeptr[cch]->wr = writeptr[cch]->data;
 		      readptr[cch]->rd = readptr[cch]->data;
-		   
 		    } 
 		}
-	      
+	      else if( readptr[cch]->rd == readptr[cch]->data + NODE_SIZE )
+		{
+		  readptr[cch]->rd = readptr[cch]->data;
+		}
+
 	    }
+	  if( readptr[cch]->rd == writeptr[cch]->wr )
+	    {
+	      readptr[cch] = headptr[cch];
+	      writeptr[cch] = headptr[cch]; 
+	      readptr[cch]->rd = readptr[cch]->data;
+	      writeptr[cch]->wr = writeptr[cch]->data;
+	    } 
 
 	  
 	}/* end read from multiple nodes */
     }
-   
+
   node_buffer -= size_back;
 
 #ifdef DEBUG   
@@ -2064,9 +2225,12 @@ int check_remaining_nodes( int cch )
 {
   int result;
   struct node *new_node;
-  new_node = writeptr[cch];
-  result = 0;
 
+  /* new_node = writeptr[cch]; */
+
+  new_node = readptr[cch];
+  result = 0;
+  
   while ( new_node )
     {
       if(new_node->next)
@@ -2077,8 +2241,11 @@ int check_remaining_nodes( int cch )
 	    result = 1;
 	}
       else
-	return result;
+	{
+	  return result;
+	}
     }
+
   return result;
 }
 
@@ -2091,7 +2258,7 @@ struct node * initialize( void )
 
   if( !newnode )
     {
-      fprintf(stderr, "Cannot create allocate memory for a new node data structure !!!\n");
+      fprintf(stderr, "Cannot allocate memory for a new node data structure !!!\n");
       return NULL;
     }
 
@@ -2109,3 +2276,4 @@ struct node * initialize( void )
   TOTAL_SIZE += NODE_SIZE;
   return newnode;
 }
+
