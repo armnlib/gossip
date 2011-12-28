@@ -33,15 +33,15 @@ include $(ARMNLIB)/include/makefile_suffix_rules.inc
 obj: $(OBJET)
 
 absolu: $(OBJET)
-	r.build -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	r.build -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
-	r.build -o gossip_client_$(BASE_ARCH) -src $(SRCC) -arch $(ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	r.build -o gossip_client_$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 server: $(OBJET)
-	r.build -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	r.build -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 client: $(OBJET)
-	r.build -o gossip_client_$(BASE_ARCH) -src $(SRCC) -arch $(ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	r.build -o gossip_client_$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 clean:
 #Faire le grand menage. On enleve tous les fichiers inutiles, les .o 
