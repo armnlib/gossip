@@ -14,8 +14,9 @@ OPTIMIZ = -O 2
 
 LDFLAGS = pthread
 
-LIBRMN = rmnbeta_011
+LIBRMN = rmn_013
 
+VER = 2.1
 
 default: absolu
 
@@ -33,21 +34,21 @@ include $(ARMNLIB)/include/makefile_suffix_rules.inc
 obj: $(OBJET)
 
 absolu: $(OBJET)
-	r.build -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gserver_$(VER)-$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
-	r.build -o gossip_client_$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gclient_$(VER)-$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 server: $(OBJET)
-	r.build -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 client: $(OBJET)
-	r.build -o gossip_client_$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gclient_$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 clean:
 #Faire le grand menage. On enleve tous les fichiers inutiles, les .o 
 
-	rm *.o
+	rm *.o gserver_$(VER)-${BASE_ARCH} gclient_$(VER)-${BASE_ARCH}
 
 clean_all:
 #Faire le grand menage. On enleve tous les fichiers inutiles, les absolus et les .o
-	rm *.o gserver_$(BASE_ARCH) gossip_client_$(BASE_ARCH) mgi.h mgi.LOG
+	rm *.o gserver_$(VER)-${BASE_ARCH} gclient_$(VER)-${BASE_ARCH} mgi.h mgi.LOG
