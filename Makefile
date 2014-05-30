@@ -34,15 +34,15 @@ include $(RPN_TEMPLATE_LIBS)/include/makefile_suffix_rules.inc
 obj: $(OBJET)
 
 absolu: $(OBJET)
-	s.compile -o gserver_$(VER)-$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gserver_$(VER)-$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
-	s.compile -o gclient_$(VER)-$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gclient_$(VER)-$(BASE_ARCH) -src $(SRCC) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 server: $(OBJET)
-	s.compile -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gserver_$(BASE_ARCH) -obj $(OBJET) -src $(SRCS) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 client: $(OBJET)
-	s.compile -o gclient_$(BASE_ARCH) -src $(SRCC) -arch $(EC_ARCH) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
+	s.compile -o gclient_$(BASE_ARCH) -src $(SRCC) -abi $(ABI) -libsys $(LDFLAGS) -includes $(INCLUDE) -librmn $(LIBRMN) -conly
 
 clean:
 #Faire le grand menage. On enleve tous les fichiers inutiles, les .o 
