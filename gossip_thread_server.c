@@ -325,8 +325,8 @@ void gossip_thread_server(char *LOGFILE, void (*event_loop)(EXTENDED_CLIENT_SLOT
   
   sprintf(buf, "%s.LOG", LOGFILE);
   
-  close(0); /* close and reopen STDOUT  */
-  close(2); /* close and reopen STDERR */
+  fclose(stdout); /* close and reopen STDOUT  */
+  fclose(stderr); /* close and reopen STDERR */
   
   freopen(buf, "w", stdout);  
   freopen(buf, "w", stderr);
