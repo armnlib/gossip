@@ -14,9 +14,9 @@ OPTIMIZ = -O 2
 
 LDFLAGS = pthread
 
-LIBRMN = rmn_015.1
+LIBRMN = rmn_015.2
 
-VER = 2.3
+VER = 2.4
 
 default: absolu
 
