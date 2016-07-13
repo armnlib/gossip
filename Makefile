@@ -25,10 +25,6 @@ SRCS = gossip_server.c
 SRCC = gossip_client.c
 OBJET = gossip_thread_server.o
 
-
-#mgi.h:
-#	svn cat svn\://mrbsvn/pub/trunk/primitives/mgi.h > mgi.h
-
 include $(RPN_TEMPLATE_LIBS)/include/makefile_suffix_rules.inc
 
 obj: $(OBJET)
