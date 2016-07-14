@@ -84,12 +84,13 @@ static int readers_counter[NCHANNELS_MAX];
 static int writers_counter[NCHANNELS_MAX];
 static int blocked_readers[NCHANNELS_MAX];
 static int blocked_writers[NCHANNELS_MAX];
-static int occupied_counter[NCHANNELS_MAX];
+static int written_records_counter[NCHANNELS_MAX];
 
-static pthread_mutex_t mutr = PTHREAD_MUTEX_INITIALIZER;
+//JMB static pthread_mutex_t mutr = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t condr = PTHREAD_COND_INITIALIZER;
-static pthread_mutex_t mutw = PTHREAD_MUTEX_INITIALIZER;
+//JMB static pthread_mutex_t mutw = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t condw = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t mutex_intrachan[NCHANNELS_MAX];
 
 
 static char *liste[NCHANNELS_MAX];
@@ -138,7 +139,14 @@ char *get_channel_name( char *name );
 char *get_last_channel();
 
 
-static int MAX_BUFFER = 200000000;
+/* JMB static int MAX_BUFFER = 200000000; */
+/* Une simulation du couple 025 deg a manque d espace avec 200 MB*/ 
+
+//static int MAX_BUFFER = 300000000;
+
+// Test for CREG12 (ocean sends 1800x1500 grid)
+static int MAX_BUFFER = 512000000;
+
 int TOTAL_SIZE;
 #define NODE_SIZE       1000000
 
@@ -183,6 +191,9 @@ void main (int argc, char **argv)
 
   for (i = 0; i < NCHANNELS_MAX; i++)
     {
+      //JMB
+      memcpy(&mutex_intrachan[i], &mutex, sizeof(mutex));
+
       for (j = 0; j < NCARMAX; j++)
 	{
 	  chan[i].subchannel_name[j] = '\0';
@@ -195,7 +206,7 @@ void main (int argc, char **argv)
       writers_counter[i] = 0;
       blocked_readers[i] = 0;
       blocked_writers[i] = 0;
-      occupied_counter[i] = 0;
+      written_records_counter[i] = 0;
 
       headptr[i] = NULL;
       nodeptr[i] = NULL;
@@ -604,24 +615,21 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
   int cch;
   char part[8];
 
-  fprintf( stderr, "*** EVENT LOOP ***, pid = %d, calling thread id = %lu ***\n", getpid(), pthread_self());
-  fprintf(stderr, "client->socket = %d \n", client->socket);  
+  fprintf( stderr, "\n *** EVENT LOOP ***, pid = %d, calling thread id = %lu ***\n", getpid(), pthread_self());
+  fprintf(stderr, "\n client->socket = %d \n", client->socket);  
   fclient = client->socket;
-  fprintf(stderr, "client->client_id = %d \n", client->client_id); 
+  fprintf(stderr, "\n client->client_id = %d \n", client->client_id); 
 
-#ifdef DEBUG 
-   fprintf(stderr, "client_NO = %d \n", client_NO);
-#endif  
 
   if(client->command != NULL)
     {
       sscanf(client->command, "%s %s %s", part, mode, subchannel);
-      fprintf(stderr, "subchannel: %s, using mode: %s\n", subchannel, mode);
+      fprintf(stderr, "\n subchannel: %s, using mode: %s\n", subchannel, mode);
     }
 
   else
     {
-      fprintf(stderr, "client->command is NULL\n");
+      fprintf(stderr, "\n client->command is NULL\n");
     }
 
   send_ack_nack(fclient, IS_OK);
@@ -631,7 +639,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
   cch = -1;
 
-  fprintf(stderr, "Number of Active Channels = %d\n", nbActiveChannels);
+  fprintf(stderr, "\n Number of Active Channels = %d\n", nbActiveChannels);
 
   for (i = 0; i < nbActiveChannels; i++)
     {
@@ -642,7 +650,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
     }
 
 #ifdef DEBUG 
-  fprintf(stderr, "event_loop(), cch = %d\n", cch);
+  fprintf(stderr, "\n event_loop(), cch = %d\n", cch);
 #endif
   
   if (cch == -1 )
@@ -670,7 +678,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	}
       else /* if (get_client_count() > 0) */
 	{
-	  fprintf(stderr, "Max Clients Number Reached, cannot go further, \nNumber of Active Channels = \"%d\" !, get_client_count = <%d>\n", nbActiveChannels, get_client_count()); 
+	  fprintf(stderr, "\n Max Clients Number Reached, cannot go further, \nNumber of Active Channels = \"%d\" !, get_client_count = <%d>\n", nbActiveChannels, get_client_count()); 
 	  close(fclient);
 	  return;
 	}
@@ -681,22 +689,22 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
   if (0 == strcmp(mode, "read"))
     {
 #ifdef DEBUG
-      fprintf(stderr, "event_loop(), open channel[%d]: %s, in mode %s\n", cch, chan[cch].subchannel_name, mode);
+      fprintf(stderr, "\n event_loop(), open channel[%d]: %s, in mode %s\n", cch, chan[cch].subchannel_name, mode);
 #endif
       if(chan[cch].fs_read >= -1)
 	chan[cch].fs_read = fclient;
       else
 	chan[cch].fs_read = LOAD;
-      if(occupied_counter[cch] == 1500)
-	occupied_counter[cch] = 0;
+      if(written_records_counter[cch] == 1500)
+	written_records_counter[cch] = 0;
       
 #ifdef DEBUG
-      fprintf(stderr, "event_loop(), open read channel, chan[%d].fs_read = %d\n", cch, chan[cch].fs_read);
+      fprintf(stderr, "\n event_loop(), open read channel, chan[%d].fs_read = %d\n", cch, chan[cch].fs_read);
 #endif
     }
   else if (0 == strcmp(mode, "write"))
     {
-      fprintf(stderr, "event_loop(), open channel[%d]: %s, using mode: %s\n", cch, chan[cch].subchannel_name, mode);
+      fprintf(stderr, "\n event_loop(), open channel[%d]: %s, using mode: %s\n", cch, chan[cch].subchannel_name, mode);
       chan[cch].fs_write = fclient;
      
       if (chan[cch].io_index == -1)
@@ -712,13 +720,13 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
       allocate_buffers( cch );
 
 #ifdef DEBUG      
-      fprintf( stderr, "event_loop(), allocating buffers for channel: \"%s\",  headptr[%d]->data = %d\n", chan[cch].subchannel_name, cch, headptr[cch]->data );
+      fprintf( stderr, "\n event_loop(), allocating buffers for channel: \"%s\",  headptr[%d]->data = %d\n", chan[cch].subchannel_name, cch, headptr[cch]->data );
 #endif
     }
   else if( headptr[cch] )
     {
 #ifdef DEBUG
-      fprintf(stderr, "event_loop(), buffers already allocated!, headptr[%d] = \"%d\"\n", cch, headptr[cch] );
+      fprintf(stderr, "\n event_loop(), buffers already allocated!, headptr[%d] = \"%d\"\n", cch, headptr[cch] );
       
 #endif
     }
@@ -726,17 +734,17 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
   pthread_mutex_unlock(&mutex);
   /* end critical section */
   
-  fprintf(stderr, "channel no = %d\n", cch);
-  fprintf(stderr, "channel[%d]: %s, mode = %s\n", cch, chan[cch].subchannel_name, mode);
-  fprintf(stderr, "mode: %s\n", mode);
-  fprintf(stderr, "chan[%d].fs_read:  %d\n", cch, chan[cch].fs_read);
-  fprintf(stderr, "chan[%d].fs_write: %d\n", cch, chan[cch].fs_write);
-  fprintf(stderr, "chan[%d].io_index: %d\n", cch, chan[cch].io_index);
+  fprintf(stderr, "\n channel no = %d\n", cch);
+  fprintf(stderr, "\n channel[%d]: %s, mode = %s\n", cch, chan[cch].subchannel_name, mode);
+  fprintf(stderr, "\n mode: %s\n", mode);
+  fprintf(stderr, "\n chan[%d].fs_read:  %d\n", cch, chan[cch].fs_read);
+  fprintf(stderr, "\n chan[%d].fs_write: %d\n", cch, chan[cch].fs_write);
+  fprintf(stderr, "\n chan[%d].io_index: %d\n", cch, chan[cch].io_index);
 
 #ifdef DEBUG
   for ( i = 0; i < nbActiveChannels; i++ )
     {
-      fprintf( stderr, "%d %d %d %d\n", i, chan[i].fs_read, chan[i].fs_write, chan[i].io_index );
+      fprintf( stderr, "\n %d %d %d %d\n", i, chan[i].fs_read, chan[i].fs_write, chan[i].io_index );
     }
 #endif
   
@@ -753,30 +761,40 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
   if( !buf )
     {
-      fprintf( stderr, "Unable to allocate buffer to read client command !!! \n" );
-      fprintf( stderr, "Server thread exiting: subchannel: %s\n", chan[cch].subchannel_name );
+      fprintf( stderr, "\n Unable to allocate buffer to read client command !!! \n" );
+      fprintf( stderr, "\n Server thread exiting: subchannel: %s\n", chan[cch].subchannel_name );
       
       close( fclient );
-      fprintf(stderr, "Cannot allocate buffer, socket closed \n");
+      fprintf(stderr, "\n Cannot allocate buffer, socket closed \n");
       decrement_client_count();
       exit(FAILURE);
     }
 
   else
     {
-      
+
+      //
+      bzero(buf,rlength);
       while( (buflen = read(fclient, buf, rlength)) > 0 )
 	{
 	  /* get next command */
 	  buf[buflen > 0 ? buflen : 0] = '\0';
+	  //JMB
+#ifdef DEBUG
+          fprintf(stderr,"\n event_loop: COMMAND \"%s\" received on channel: \"%s\" , rlength=%d, buflen=%d \n", buf, chan[cch].subchannel_name,rlength,buflen);  
+	  fflush(stderr);
+#endif
 	  
 	  if(strncmp(buf, "END", 3) == 0) 
 	    {
 	      strcpy(last_channel, chan[cch].subchannel_name);
 	      strncpy (last_channel + strlen(last_channel), ", command: END", strlen(", command: END"));
 	      /* echo command to logfile */
-	      printf("\"%s\" command received, channel: \"%s\"\n", buf, chan[cch].subchannel_name);  
-	      
+#ifdef INFOLEVEL1
+	      fprintf(stderr,"\n \"%s\" command received, channel: \"%s\"\n", buf, chan[cch].subchannel_name);  
+	      fflush(stderr);
+#endif
+
 	      if( writeptr[cch] == readptr[cch] )
 		{
 		   chan[cch].fs_write = -1;
@@ -802,17 +820,19 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	      strcpy(last_channel, chan[cch].subchannel_name);
 	      strncpy (last_channel + strlen(last_channel), ", command: READ", strlen(", command: READ") - 1);
 
-#ifdef DEBUG
-	      fprintf(stderr, "Begin READ Command using channel: \"%s\"\n", chan[cch].subchannel_name);
+	      //JMB
+#ifdef INFOLEVEL1 
+	      fprintf(stderr, "\n event_loop: tid= %lu, Begin READ Command using channel: \"%s\"\n",pthread_self(),chan[cch].subchannel_name);
+	      fprintf(stderr, "\n Begin READ Command using channel: \"%s\"\n", chan[cch].subchannel_name);
 #endif
    
 	      if( chan[cch].fs_read == LOAD ) /* case load data from file */
 		{
 		  memcpy( &nbytes, readptr[cch]->rd, sizeof( int ) );  /* get first length tag */
-		  fprintf(stderr, "READ Command using channel: \"%s\", loading data from file\n", chan[cch].subchannel_name);
+		  fprintf(stderr, "\n READ Command using channel: \"%s\", loading data from file\n", chan[cch].subchannel_name);
 		  
-#ifdef DEBUG
-		  fprintf(stderr, "gossip_server::event_loop(): READ: %d bytes have been loaded \n", nbytes);
+#ifdef INFOLEVEL1 
+		  fprintf(stderr, "\n gossip_server::event_loop(): READ: %d bytes have been loaded \n", nbytes);
 #endif
 		  write_buffer = read_from_node( cch, nbytes );
 		  
@@ -823,7 +843,8 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 		  if (tag != nbytes )
 		    {
 #ifdef DEBUG
-		      fprintf(stderr, "READ Command, Error reading data from file, length problem, tag1 = \"%d\", tag2 = \"%d\"\n", nbytes, tag);
+		      fprintf(stderr, "\n READ Command LOAD situation: Error reading data from file, length problem, tag1 = \"%d\", tag2 = \"%d\"\n", nbytes, tag);
+                      fflush(stderr);
 #endif
 		      send_ack_nack(fclient, NOT_OK);
 		      continue;
@@ -842,62 +863,70 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 		  continue;
 		} /* end case load data from file */
 
-	      	      
-#ifdef DEBUG
-	      fprintf(stderr, "gossip_server::event_loop(): READ: No data file loaded \n");
+#ifdef INFOLEVEL1 
+	      fprintf(stderr, "\n gossip_server::event_loop(): READ: No data file loaded \n");
 #endif
 
-#ifdef DEBUG	     
-#endif
 	      
-	      if(occupied_counter[cch] <= 0)  /*  Block until data becomes available */
+	      //JMB
+              pthread_mutex_lock(&mutex_intrachan[cch]);
+
+	      if(written_records_counter[cch] <= 0)  /*  Block until data becomes available */
 		{
 		 
 		  blocked_readers[cch]++;
 
 		  		  
 		  /*** begin READER critical section, wait for data to be written  ***/
-		  pthread_mutex_lock(&mutr);
+		  //JMB		  pthread_mutex_lock(&mutr);
 		  
-		  while(occupied_counter[cch] <= 0)
+		  while(written_records_counter[cch] <= 0)
 		    {
-#ifdef DEBUG
-		      fprintf(stderr, "READ Command, no data available, \nshould wait for data to be written to channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name);
+#ifdef INFOLEVEL1
+		      fprintf(stderr, "\n READ Command, no data available, waiting for data to be written to channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name);
+                      fflush(stderr);
 #endif		     
-		      pthread_cond_wait(&condr, &mutr);
+		      //JMB		      pthread_cond_wait(&condr, &mutr);
+		      pthread_cond_wait(&condr, &mutex_intrachan[cch]);
 
 		    }
-		  pthread_mutex_unlock(&mutr);
+		  //JMB		  pthread_mutex_unlock(&mutr);
 		  /***************** end READER critical section *********************/
 		  blocked_readers[cch]--;  /* At wakeup */
 		  
 		}
 	      
-	      if( occupied_counter[cch] == 1500 )
+	      if( written_records_counter[cch] == 1500 )
 		{
 		  send_ack_nack( fclient, NOT_OK );
 		  continue;
 		}
-	      occupied_counter[cch]--; /* Either data becomes available 
+	      written_records_counter[cch]--; /* Either data becomes available 
 					  for reading or we were waiting */
 
+	      //JMB
+              pthread_mutex_unlock(&mutex_intrachan[cch]);
 
 	      if ( !readptr[cch]->rd )
-		fprintf( stderr, "READ Command using channel \"%s\" <readptr[%d]->rd is NULL>\n", chan[cch].subchannel_name, cch);
+		{
+                fprintf(stderr, "\n READ Command using channel \"%s\" <readptr[%d]->rd is NULL>\n", chan[cch].subchannel_name, cch);
+	        fflush(stderr);
+                }
 	      
 	      /* read data length */
 	      if ( readptr[cch]->rd >= readptr[cch]->data && readptr[cch]->rd != readptr[cch]->data + NODE_SIZE)
 		{
 		  /* extract first length tag */
 		  memcpy( &nbytes, readptr[cch]->rd, sizeof( int ) );  
-#ifdef DEBUG		  
-		  fprintf( stderr, "READ Command using channel[%d]: \"%s\", data length = \"%d\"\n", cch, chan[cch].subchannel_name, nbytes );
+#ifdef INFOLEVEL1
+		  fprintf( stderr, "\n READ Command using channel[%d]: \"%s\", data length = \"%d\"\n", cch, chan[cch].subchannel_name, nbytes );
+ 	          fflush(stderr);                
 #endif
 		}
 	      
 	      if( nbytes <= 0 )
 		{
-		  fprintf( stderr, "READ Command using channel \"%s\", Error reading data length: %d (wrong value)\n", chan[cch].subchannel_name, nbytes );
+		  fprintf( stderr, "\n READ Command using channel \"%s\", Error reading data length: %d (wrong value)\n", chan[cch].subchannel_name, nbytes );
 		  send_ack_nack( fclient, NOT_OK );
 		  exit( FAILURE );
 		}
@@ -911,7 +940,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	      
 	      if( !write_buffer )
 		{
-		  fprintf( stderr, "READ Command using channel \"%s\", Error allocating data buffer \n", chan[cch].subchannel_name);
+		  fprintf( stderr, "\n READ Command using channel \"%s\", Error allocating data buffer \n", chan[cch].subchannel_name);
 		  send_ack_nack( fclient, NOT_OK );
 		  exit( FAILURE );
 		}
@@ -923,13 +952,13 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
 	      if( nbytes != nbytes2)
 		{
-		  fprintf( stderr, "READ Command using channel \"%s\", Error reading data length:  tag1 = %d != tag2 = %d \n", chan[cch].subchannel_name, nbytes, nbytes2 );
+		  fprintf( stderr, "\n READ Command using channel \"%s\", Error reading data length:  tag1 = %d != tag2 = %d \n", chan[cch].subchannel_name, nbytes, nbytes2 );
 		  send_ack_nack( fclient, NOT_OK );
 		  exit( FAILURE );
 		}
 
-#ifdef DEBUG
-	      fprintf( stderr, "READ Command using channel \"%s\", tag1 = %d == tag2 = %d \n", chan[cch].subchannel_name, nbytes, nbytes2 );
+#ifdef INFOLEVEL1
+	      fprintf( stderr, "\n READ Command using channel \"%s\", tag1 = %d == tag2 = %d \n", chan[cch].subchannel_name, nbytes, nbytes2 );
 #endif
 
 	      write_buffer -= nbytes;
@@ -942,18 +971,18 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	      pthread_mutex_unlock( &mutex ); /* unlock mutex */
 
 
-	      
+	      //JMB: DEAD code blocked_writers initialized to 0 and never modified	      
 	      /* data has been read, write thread needs to be waken up */
+	      //	      pthread_mutex_lock(&mutr);
+	      //	      if( blocked_writers[cch] > 0 )
+	      //{
+	      //  fprintf( stderr, "\n READ Command, data has been read, \nwrite thread needs to be waken up!\n" );
+	      //  readptr[cch]->fs_read = 0; /* read has been done, write thread can proceed */
 
-	      pthread_mutex_lock(&mutr);
-	      if( blocked_writers[cch] > 0 )
-		{
-		  fprintf( stderr, "READ Command, data has been read, \nwrite thread needs to be waken up!\n" );
-		  readptr[cch]->fs_read = 0; /* read has been done, write thread can proceed */
+	      //  pthread_cond_broadcast( &condr );
+	      //}
+	      //pthread_mutex_unlock(&mutr);
 
-		  pthread_cond_broadcast( &condr );
-		}
-	      pthread_mutex_unlock(&mutr);
 
 	      /* data has been read, write thread needs to be waken up */
 	      readers_counter[cch]--;
@@ -974,9 +1003,10 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
 
 	      writers_counter[cch]++;
-#ifdef DEBUG
 
-	      fprintf(stderr, "Begin WRITE using channel: \"%s\"\n", chan[cch].subchannel_name);
+	      //JMB
+#ifdef INFOLEVEL1
+	      fprintf(stderr, "\n event_loop: tid= %lu, Begin WRITE using channel: \"%s\"\n", pthread_self(),chan[cch].subchannel_name);
 #endif
 	      send_ack_nack(fclient, IS_OK);
 	      
@@ -993,13 +1023,13 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
 	      if( !read_buffer2[cch] )
 		{
-		  fprintf(stderr, "WRITE command, read_buffer is NULLL\n");
+		  fprintf(stderr, "\n WRITE command, read_buffer is NULLL\n");
 		  exit(FAILURE);
 		}
 
 	      /***************** read records ***********************/
-#ifdef DEBUG
-	      fprintf( stderr, "WRITE command received \"%d bytes\"\n", nbytes );
+#ifdef INFOLEVEL1
+	      fprintf( stderr, "\n WRITE command received \"%d bytes\"\n", nbytes );
 #endif	  
 	      
 	      /* copy data form linear to circular buffer */
@@ -1010,24 +1040,28 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 	      pthread_mutex_unlock(&mutex);
 
 
+	      //JMB
+	      pthread_mutex_lock(&mutex_intrachan[cch]);
 	      /* Either there is space, or we were waiting */
 	      /* and then waken up when space becomes available after read data */
-	      occupied_counter[cch]++ ;
+	      written_records_counter[cch]++ ;
 
 	      /* reader thread needs to be waken up */
 
-	      fprintf(stderr, "WRITE, blocked_readers[%d] = %d, occupied_counter[%d] = %d\n", cch, blocked_readers[cch], cch, occupied_counter[cch]);
+	      fprintf(stderr, "\n WRITE, blocked_readers[%d] = %d, written_records_counter[%d] = %d\n", cch, blocked_readers[cch], cch, written_records_counter[cch]);
+              fflush(stderr);
 
-
-	      pthread_mutex_lock(&mutw);
+              //JMB pthread_mutex_lock(&mutw);
+	      /* reader thread needs to be waken up */
 	      if(blocked_readers[cch] > 0)
 		{
+		  fprintf(stderr, "\n WRITE, BROADCASTING condr to wake up reader thread on channel[%d], %s !!\n",cch, chan[cch].subchannel_name);
+                  fflush(stderr);
 		  pthread_cond_broadcast(&condr);
-		  fprintf(stderr, "WRITE, reader thread needs to be waken up 2!!\n");
 		}
-      
-	      pthread_mutex_unlock(&mutw);
-	      /* reader thread needs to be waken up */
+	      //JMB	      pthread_mutex_unlock(&mutw);
+	      pthread_mutex_unlock(&mutex_intrachan[cch]);
+
 
 	      writers_counter[cch]--;
 
@@ -1042,20 +1076,21 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 
 	  else
 	    { /* assumed to be a bum call */
-	      printf("Bad Command: \"%s\"\n", buf);
+	      printf("\n event_loop: Bad Command: BUM call \"%s\"\n", buf);
 	      send_ack_nack(fclient, NOT_OK);  /* send NACK to indicate that command is rejected */
 	      reset_timeout_counter();
 	   
 	      if(buf)
 		{
-		  fprintf(stderr, "Thread exiting, before free(buf), channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name );
+		  fprintf(stderr, "\n Thread exiting, before free(buf), channel[%d]: \"%s\"\n", cch, chan[cch].subchannel_name );
 		  free(buf);
 		}
 
 	      continue;   /* connection terminated, process next client */
 	    }
 
-
+	  //JMB
+	  bzero(buf,rlength);           
 	} /* end while read/write from client  */
     }
  
@@ -1068,12 +1103,12 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
   chan[cch].status += 1;
 
 #ifdef DEBUG
-  fprintf(stderr, "Server: freeing channel[%d], status = %d\n", cch, chan[cch].status);
+  fprintf(stderr, "\n Server: freeing channel[%d], status = %d\n", cch, chan[cch].status);
 #endif
 
   if( !headptr[cch] )
     {
-      fprintf(stderr, "Thread exiting, headptr[%d] is NULL\n", cch);
+      fprintf(stderr, "\n Thread exiting, headptr[%d] is NULL\n", cch);
     }
   
   else if( headptr[cch] && chan[cch].status >= 2 )
@@ -1087,18 +1122,18 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
       if( headptr[cch] )
 	{
 #ifdef DEBUG
-	  fprintf(stderr, "Thread exiting, headptr[%d] NOT NULL\n", cch);
+	  fprintf(stderr, "\n Thread exiting, headptr[%d] NOT NULL\n", cch);
 #endif
 	  headptr[cch] = NULL;
 
 #ifdef DEBUG
 	  if( !headptr[cch] )
-	    fprintf(stderr, "Thread exiting, headptr[%d] NULL\n", cch);
+	    fprintf(stderr, "\n Thread exiting, headptr[%d] NULL\n", cch);
 #endif
 	}
 
 #ifdef DEBUG
-      fprintf(stderr, "Server: freeing channel[%d]\n", cch);
+      fprintf(stderr, "\n Server: freeing channel[%d]\n", cch);
 #endif
     } 
 
@@ -1107,7 +1142,7 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
     {
       headptr[cch] = NULL;
 #ifdef DEBUG
-      fprintf(stderr, "Server: freeing channel[%d], status = %d\n", cch, chan[cch].status);
+      fprintf(stderr, "\n Server: freeing channel[%d], status = %d\n", cch, chan[cch].status);
 #endif
     }
 
@@ -1116,20 +1151,20 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
   if( headptr[cch] )
     {
 #ifdef DEBUG
-      fprintf(stderr, "Thread exiting, headptr[%d] NOT NULL, status = %d\n", cch, chan[cch].status);
+      fprintf(stderr, "\n Thread exiting, headptr[%d] NOT NULL, status = %d\n", cch, chan[cch].status);
 #endif
     }
 #ifdef DEBUG
-  fprintf(stderr, "--before decrement--client_count = %d\n", get_client_count());
+  fprintf(stderr, "\n --before decrement--client_count = %d\n", get_client_count());
 #endif
 
   decrement_client_count();
 
 #ifdef DEBUG
-  fprintf(stderr, "--after decrement--client_count = %d\n", get_client_count());
+  fprintf(stderr, "\n --after decrement--client_count = %d\n", get_client_count());
 #endif
 
-  fprintf(stderr, "Server thread exiting from active channel[%d]: \"%s\", using mode: %s\n", cch, chan[cch].subchannel_name, mode);
+  fprintf(stderr, "\n Server thread exiting from active channel[%d]: \"%s\", using mode: %s\n", cch, chan[cch].subchannel_name, mode);
   pthread_mutex_unlock(&mutex);
 
   fflush(stderr);
@@ -1143,7 +1178,7 @@ void freenodes( struct node *head_node, int cch )
     int counter = 0;
 
 #ifdef DEBUG
-    fprintf( stderr, "freenodes( ), Satrt ..., channel[%d]\n", cch);
+    fprintf( stderr, "\n freenodes( ), Satrt ..., channel[%d]\n", cch);
 #endif
 
     /* chan[cch].status += 1; */
@@ -1342,7 +1377,7 @@ int look_for_channel(char *channel, int mode)
   int cch;
   for(cch = 0; cch < nbActiveChannels; cch++)
     {
-      if(chan[cch].fs_read > 0 && chan[cch].fs_write < 0 && (strcmp(chan[cch].subchannel_name, channel) == 0) && occupied_counter[cch] <= 0)
+      if(chan[cch].fs_read > 0 && chan[cch].fs_write < 0 && (strcmp(chan[cch].subchannel_name, channel) == 0) && written_records_counter[cch] <= 0)
 	return cch;
     }
 
@@ -1358,7 +1393,7 @@ void cancel_read(char *channel)
   
   if((cch = look_for_channel(channel, READ)) >= 0)
     {
-      occupied_counter[cch] = 1500;
+      written_records_counter[cch] = 1500;
       chan[cch].fs_read = -1;
       pthread_cond_broadcast(&condr);
     }

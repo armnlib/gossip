@@ -20,7 +20,6 @@ VER = 2.4
 
 default: absolu
 
-gossip_thread_server.o: mgi.h
 SRCS = gossip_server.c
 SRCC = gossip_client.c
 OBJET = gossip_thread_server.o
