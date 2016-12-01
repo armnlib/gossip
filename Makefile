@@ -16,7 +16,7 @@ LDFLAGS = pthread
 
 LIBRMN = rmn_015.2
 
-VER = 2.4
+VER = 2.5
 
 default: absolu
 
