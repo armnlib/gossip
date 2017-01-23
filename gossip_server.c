@@ -86,12 +86,9 @@ static int blocked_readers[NCHANNELS_MAX];
 static int blocked_writers[NCHANNELS_MAX];
 static int written_records_counter[NCHANNELS_MAX];
 
-//JMB static pthread_mutex_t mutr = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t condr = PTHREAD_COND_INITIALIZER;
-//JMB static pthread_mutex_t mutw = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t condw = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t mutex_intrachan[NCHANNELS_MAX];
-
+static pthread_cond_t condr_intrachan[NCHANNELS_MAX];
 
 static char *liste[NCHANNELS_MAX];
 static char lcl_liste[NCHANNELS_MAX][NCARMAX]; 
@@ -145,7 +142,10 @@ char *get_last_channel();
 //static int MAX_BUFFER = 300000000;
 
 // Test for CREG12 (ocean sends 1800x1500 grid)
-static int MAX_BUFFER = 512000000;
+//static int MAX_BUFFER = 512000000;
+
+// GDPScpl YY25km
+static int MAX_BUFFER = 1024000000;
 
 int TOTAL_SIZE;
 #define NODE_SIZE       1000000
@@ -193,6 +193,8 @@ void main (int argc, char **argv)
     {
       //JMB
       memcpy(&mutex_intrachan[i], &mutex, sizeof(mutex));
+
+      memcpy(&condr_intrachan[i], &condr, sizeof(condr));
 
       for (j = 0; j < NCARMAX; j++)
 	{
@@ -887,7 +889,8 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
                       fflush(stderr);
 #endif		     
 		      //JMB		      pthread_cond_wait(&condr, &mutr);
-		      pthread_cond_wait(&condr, &mutex_intrachan[cch]);
+//12jan2016		      pthread_cond_wait(&condr, &mutex_intrachan[cch]);
+		      pthread_cond_wait(&condr_intrachan[cch], &mutex_intrachan[cch]);
 
 		    }
 		  //JMB		  pthread_mutex_unlock(&mutr);
@@ -1057,7 +1060,8 @@ static void event_loop(EXTENDED_CLIENT_SLOT *client)
 		{
 		  fprintf(stderr, "\n WRITE, BROADCASTING condr to wake up reader thread on channel[%d], %s !!\n",cch, chan[cch].subchannel_name);
                   fflush(stderr);
-		  pthread_cond_broadcast(&condr);
+//JMB 12jan2016		  pthread_cond_broadcast(&condr);
+		  pthread_cond_broadcast(&condr_intrachan[cch]);
 		}
 	      //JMB	      pthread_mutex_unlock(&mutw);
 	      pthread_mutex_unlock(&mutex_intrachan[cch]);
